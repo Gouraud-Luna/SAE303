@@ -1,0 +1,72 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const datasets = [
+  ["chaleur.json", "Zones thermiques locales", "2022", "Données locales préparées pour le projet"],
+  ["installationindugironde.json", "Installations classées", "2025–2026", "Géorisques · licence Etalab"],
+  ["pop.json", "Population et revenus carroyés", "millésime disponible dans le fichier", "Insee / Filosofi · licence Etalab"],
+];
+---
+
+<Layout title="Méthode">
+  <article class="pt-12 sm:pt-20">
+    <header class="max-w-3xl">
+      <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">Méthode</p>
+      <h1 class="text-4xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
+        Des données vérifiables et des limites explicites
+      </h1>
+      <p class="mt-6 text-lg leading-8 text-slate-600">
+        Cette page documente les sources, les traitements et les choix de lecture
+        utilisés dans le récit.
+      </p>
+    </header>
+
+    <div class="mt-12 space-y-12 text-slate-600">
+      <section aria-labelledby="sources-title">
+        <h2 id="sources-title" class="text-2xl font-semibold text-slate-900">Sources et millésimes</h2>
+        <div class="mt-4 overflow-x-auto rounded border border-slate-200">
+          <table class="min-w-full text-left text-sm">
+            <thead class="bg-[#eef1ef] text-slate-900">
+              <tr><th class="px-4 py-3">Fichier</th><th class="px-4 py-3">Contenu</th><th class="px-4 py-3">Millésime</th><th class="px-4 py-3">Licence / origine</th></tr>
+            </thead>
+            <tbody>
+              {datasets.map(([file, content, year, source]) => (
+                <tr class="border-t border-slate-200">
+                  <td class="px-4 py-3 font-medium">{file}</td><td class="px-4 py-3">{content}</td><td class="px-4 py-3">{year}</td><td class="px-4 py-3">{source}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="processing-title">
+        <h2 id="processing-title" class="text-2xl font-semibold text-slate-900">Traitements appliqués</h2>
+        <ul class="mt-4 list-disc space-y-2 pl-6 leading-7">
+          <li>Filtrage sur Bordeaux avec le code commune INSEE 33063.</li>
+          <li>Sélection des zones thermiques dont le delta est supérieur à 4 °C pour la carte.</li>
+          <li>Conversion des installations Lambert-93 (EPSG:2154) vers WGS84 pour Leaflet.</li>
+          <li>Calcul des effectifs par secteur et par classe d’âge à partir des colonnes conservées.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="limits-title">
+        <h2 id="limits-title" class="text-2xl font-semibold text-slate-900">Limites et biais</h2>
+        <p class="mt-4 max-w-3xl leading-7">
+          Les données ne sont pas toutes au même millésime et leurs échelles diffèrent.
+          Un carreau statistique décrit une population agrégée, pas une personne. La présence
+          d’une installation ou d’une zone thermique ne suffit pas à établir un niveau de danger
+          individuel : les résultats servent à orienter la lecture et la prévention.
+        </p>
+      </section>
+
+      <section aria-labelledby="links-title">
+        <h2 id="links-title" class="text-2xl font-semibold text-slate-900">Ressources</h2>
+        <div class="mt-4 flex flex-wrap gap-4">
+          <a class="font-medium text-orange-700 underline" href="https://observablehq.com/d/a4eab818491f5971" rel="noreferrer">Notebook Observable</a>
+          {datasets.map(([file]) => <a class="font-medium text-orange-700 underline" href={`/data/${file}`} download>{file}</a>)}
+        </div>
+      </section>
+    </div>
+  </article>
+</Layout>

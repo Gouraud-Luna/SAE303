@@ -9,6 +9,7 @@ import installationsData from "../assets/installationindugironde.json";
 const bordeauxCode = 33063;
 const heatZones = chaleur
   .filter((zone) => String(zone.insee) === String(bordeauxCode))
+  .filter((zone) => Number(zone.delta) > 4)
   .map(({ geo_shape, delta }) => ({
     ...geo_shape,
     properties: { delta },

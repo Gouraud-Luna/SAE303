@@ -1,0 +1,91 @@
+---
+import Layout from "../layouts/Layout.astro";
+import PlotFigure from "../components/PlotFigure.astro";
+import * as Plot from "@observablehq/plot";
+import population from "../assets/pop.json";
+
+const ageGroups = [
+  {
+    groupe: "0–17 ans",
+    population: population.reduce(
+      (total, cell) => total + cell.ind_0_3 + cell.ind_4_5 + cell.ind_6_10 + cell.ind_11_17,
+      0,
+    ),
+  },
+  {
+    groupe: "18–64 ans",
+    population: population.reduce(
+      (total, cell) => total + cell.ind_18_24 + cell.ind_25_39 + cell.ind_40_54 + cell.ind_55_64,
+      0,
+    ),
+  },
+  {
+    groupe: "65 ans et plus",
+    population: population.reduce((total, cell) => total + cell.ind_65_79 + cell.ind_80p, 0),
+  },
+];
+
+const totalPopulation = population.reduce((total, cell) => total + cell.ind, 0);
+const totalPoor = population.reduce((total, cell) => total + cell.men_pauv, 0);
+const povertyRate = totalPopulation ? ((totalPoor / totalPopulation) * 100).toFixed(2) : "0.00";
+---
+
+<Layout title="Révélation des vulnérabilités">
+  <article class="pt-12 sm:pt-20">
+    <header class="max-w-3xl">
+      <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
+        03 · Révélation
+      </p>
+      <h1 class="text-4xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
+        Le risque n’est pas le même pour tout le monde
+      </h1>
+      <p class="mt-6 text-lg leading-8 text-slate-600">
+        Les carreaux statistiques permettent de descendre sous l’échelle communale
+        et de rapprocher l’exposition environnementale des caractéristiques des habitants.
+      </p>
+    </header>
+
+    <section class="mt-12 grid gap-4 sm:grid-cols-2" aria-label="Indicateurs de vulnérabilité">
+      <div class="rounded border border-slate-200 bg-[#eef1ef] p-6">
+        <p class="text-sm text-slate-600">Part calculée des personnes pauvres</p>
+        <p class="mt-2 text-4xl font-semibold text-slate-900">{povertyRate}%</p>
+      </div>
+      <div class="rounded border border-slate-200 bg-[#eef1ef] p-6">
+        <p class="text-sm text-slate-600">Carreaux statistiques analysés</p>
+        <p class="mt-2 text-4xl font-semibold text-slate-900">{population.length}</p>
+      </div>
+    </section>
+
+    <figure class="mt-12 rounded border border-slate-200 bg-[#eef1ef] p-4">
+      <figcaption class="mb-4 max-w-2xl text-sm leading-6 text-slate-600">
+        Population estimée par grande classe d’âge dans les carreaux disponibles.
+        Les effectifs sont additionnés à partir des variables d’âge du fichier local.
+      </figcaption>
+      <PlotFigure
+        options={{
+          height: 360,
+          marginLeft: 70,
+          x: { label: null },
+          y: { grid: true, label: "Population" },
+          color: { range: ["#536dfe", "#26a69a", "#ef6c00"] },
+          marks: [
+            Plot.barY(ageGroups, { x: "groupe", y: "population", fill: "groupe" }),
+            Plot.ruleY([0]),
+          ],
+        }}
+      />
+    </figure>
+
+    <section class="mt-16 max-w-3xl border-l-4 border-orange-600 pl-6" aria-labelledby="reading-title">
+      <h2 id="reading-title" class="text-2xl font-semibold text-slate-900">
+        Lire une vulnérabilité, pas désigner un quartier
+      </h2>
+      <p class="mt-4 leading-7 text-slate-600">
+        Ces indicateurs décrivent des situations agrégées : ils ne permettent pas
+        d’identifier une personne et ne mesurent pas directement l’exposition de chaque
+        logement. Ils donnent toutefois un dénominateur pour interpréter les écarts
+        entre carreaux et éviter de compter seulement les équipements ou les habitants exposés.
+      </p>
+    </section>
+  </article>
+</Layout>
