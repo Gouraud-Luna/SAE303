@@ -47,17 +47,17 @@ const sectors = Object.entries(
         Où les risques se concentrent-ils ?
       </h1>
       <p class="mt-6 text-lg leading-8 text-slate-600">
-        Cette carte croise les zones de chaleur relevées en 2022 et les installations
-        industrielles recensées à Bordeaux. Les deux calques peuvent être affichés
-        séparément pour lire chaque phénomène.
+        Cette carte croise les 626 zones thermiques dont l’écart dépasse 4 °C
+        avec les installations industrielles recensées à Bordeaux. Les deux calques
+        peuvent être affichés séparément pour lire chaque phénomène.
       </p>
     </header>
 
     <figure class="mt-12">
       <figcaption class="mb-4 max-w-3xl text-sm leading-6 text-slate-600">
-        Carte interactive de Bordeaux : les zones orange représentent les zones de chaleur ;
-        les points bleus représentent les installations industrielles. Utilisez le contrôle
-        en haut à droite pour activer ou désactiver les calques.
+        Carte interactive : les zones thermiques sont filtrées sur un écart strictement
+        supérieur à 4 °C ; les installations industrielles sont représentées par des points
+        orange. Utilisez le contrôle en haut à droite pour activer ou désactiver les calques.
       </figcaption>
       <RiskMap heatZones={heatZones} installations={installations} />
     </figure>
@@ -71,9 +71,10 @@ const sectors = Object.entries(
           Des installations aux secteurs variés
         </h2>
         <p class="mt-4 leading-7 text-slate-600">
-          Le graphique présente les dix secteurs d’activité les plus représentés
-          parmi les installations recensées à Bordeaux. Les valeurs sont des effectifs,
-          et non une mesure directe du niveau de danger.
+          Le graphique présente les dix secteurs d’activité les plus représentés parmi les
+          installations recensées dans la commune de Bordeaux, qui constitue le périmètre
+          disponible pour le focus sur Bacalan. Les valeurs sont des effectifs et non une
+          mesure directe du niveau de danger.
         </p>
       </div>
 
