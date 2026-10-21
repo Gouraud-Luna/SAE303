@@ -1,42 +1,591 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import Btn from "../components/Btn.astro";
+import installationsData from "../assets/installationindugironde.json";
+import chaleur from "../assets/chaleur.json";
+import population from "../assets/pop.json";
+
+const bordeauxCode = "33063";
+const installations = installationsData.filter(
+  (installation) => String(installation.cd_insee ?? "").trim().padStart(5, "0") === bordeauxCode,
+);
+const zonesThermiques = chaleur.filter(
+  (zone) =>
+    String(zone.insee ?? "").trim().padStart(5, "0") === bordeauxCode &&
+    Number.isFinite(Number(zone.delta)) &&
+    zone.geo_shape,
+);
+const carreauxSociaux = population.filter(
+  (cell) =>
+    Number(cell.tmaille) === 200 &&
+    Number(cell.men) > 0 &&
+    Number.isFinite(Number(cell.lon)) &&
+    Number.isFinite(Number(cell.lat)),
+);
+const totalMenages = carreauxSociaux.reduce((total, cell) => total + Number(cell.men || 0), 0);
+const totalMenagesPauvres = carreauxSociaux.reduce(
+  (total, cell) => total + Number(cell.men_pauv || 0),
+  0,
+);
+const tauxPauvrete = totalMenages
+  ? ((100 * totalMenagesPauvres) / totalMenages).toLocaleString("fr-FR", {
+      maximumFractionDigits: 1,
+    })
+  : "0";
+const installationsAutorisation = installations.filter(
+  (installation) => installation.lib_regime === "Autorisation",
+).length;
+const installationsSeveso = installations.filter((installation) =>
+  String(installation.lib_seveso || "").trim().toLowerCase().startsWith("seveso"),
+).length;
+const zonesAuDessus2 = zonesThermiques.filter((zone) => Number(zone.delta) > 2).length;
+const zonesAuDessus4 = zonesThermiques.filter((zone) => Number(zone.delta) > 4).length;
+const cellulesAvecChaleur = carreauxSociaux.map((cell) => ({
+  povertyRate: (100 * Number(cell.men_pauv || 0)) / Number(cell.men),
+  heatValues: [] as number[],
+}));
+const centresThermiques = zonesThermiques
+  .filter(
+    (zone) =>
+      Number.isFinite(Number(zone.geo_point_2d?.lat)) &&
+      Number.isFinite(Number(zone.geo_point_2d?.lon)),
+  )
+  .map((zone) => ({
+    lat: Number(zone.geo_point_2d.lat),
+    lon: Number(zone.geo_point_2d.lon),
+    delta: Number(zone.delta),
+  }));
+
+centresThermiques.forEach((zone) => {
+  let closestIndex = -1;
+  let closestDistance = Infinity;
+  carreauxSociaux.forEach((cell, index) => {
+    const northSouth = (Number(cell.lat) - zone.lat) * 111_320;
+    const eastWest =
+      (Number(cell.lon) - zone.lon) * 111_320 * Math.cos((zone.lat * Math.PI) / 180);
+    const distance = Math.hypot(northSouth, eastWest);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  });
+  if (closestIndex >= 0 && closestDistance <= 150) {
+    cellulesAvecChaleur[closestIndex].heatValues.push(zone.delta);
+  }
+});
+
+const groupesPauvrete = cellulesAvecChaleur
+  .filter((cell) => cell.heatValues.length > 0)
+  .sort((a, b) => a.povertyRate - b.povertyRate);
+const shareHotZonesByPovertyGroup = [0, 1, 2, 3].map((quartile) => {
+  const start = Math.floor((quartile * groupesPauvrete.length) / 4);
+  const end = Math.floor(((quartile + 1) * groupesPauvrete.length) / 4);
+  const group = groupesPauvrete.slice(start, end);
+  const hotCells = group.filter(
+    (cell) => cell.heatValues.reduce((sum, value) => sum + value, 0) / cell.heatValues.length > 2,
+  ).length;
+  return group.length ? Math.round((100 * hotCells) / group.length) : 0;
+});
+const cellulesChaleurEtSocial = groupesPauvrete.length;
+const tauxCouverture = carreauxSociaux.length
+  ? Math.round((100 * cellulesChaleurEtSocial) / carreauxSociaux.length)
+  : 0;
 ---
 
-<Layout title="Conclusion">
+<script>
+  import L from "leaflet";
+  import proj4 from "proj4";
+  import installationsData from "../assets/installationindugironde.json";
+  import chaleur from "../assets/chaleur.json";
+  import population from "../assets/pop.json";
+  import "leaflet/dist/leaflet.css";
+
+  type InfoRow = [string, string];
+  const maps = new Map<HTMLElement, L.Map>();
+  const bordeauxCode = "33063";
+
+  proj4.defs(
+    "EPSG:2154",
+    "+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +units=m +no_defs",
+  );
+
+  const nombre = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return Number.NaN;
+    return Number(String(value).trim().replace(",", "."));
+  };
+
+  const echapper = (value: unknown) =>
+    String(value ?? "Non renseigné").replace(/[&<>"']/g, (character) => {
+      const entities: Record<string, string> = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      };
+      return entities[character];
+    });
+
+  const initializeMaps = () => {
+    document.querySelectorAll<HTMLElement>("[data-conclusion-map]").forEach((container) => {
+      if (maps.has(container)) return;
+      const status = container.querySelector<HTMLElement>("[data-map-status]");
+      const mapElement = container.querySelector<HTMLElement>("[data-map-canvas]");
+      const infoPanel = container.querySelector<HTMLElement>("[data-map-info]");
+      if (!status || !mapElement || !infoPanel) return;
+
+      const map = L.map(mapElement, { scrollWheelZoom: false }).setView([44.8378, -0.5792], 12);
+      maps.set(container, map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 19,
+      }).addTo(map);
+
+      const contourLayer = L.layerGroup();
+      const installationLayer = L.layerGroup();
+      const heatLayer = L.layerGroup();
+      const socialLayer = L.layerGroup();
+      const errors: string[] = [];
+      let installationCount = 0;
+      let heatCount = 0;
+      let socialCount = 0;
+
+      const showInformation = (title: string, rows: InfoRow[]) => {
+        infoPanel.replaceChildren();
+        const heading = document.createElement("strong");
+        heading.className = "block text-base font-semibold text-slate-900";
+        heading.textContent = title;
+        infoPanel.appendChild(heading);
+        rows.forEach(([label, value]) => {
+          const paragraph = document.createElement("p");
+          paragraph.className = "my-1.5 text-sm leading-6 text-slate-700";
+          const labelElement = document.createElement("strong");
+          labelElement.textContent = `${label} : `;
+          paragraph.append(labelElement, document.createTextNode(value));
+          infoPanel.appendChild(paragraph);
+        });
+      };
+
+      const initialize = async () => {
+        try {
+          try {
+            const response = await fetch(
+              "https://geo.api.gouv.fr/communes/33063?format=geojson&geometry=contour",
+            );
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const boundary = await response.json();
+            if (!boundary?.geometry) throw new Error("Géométrie absente");
+            const boundaryLayer = L.geoJSON(boundary, {
+              style: {
+                color: "#315b45",
+                weight: 2,
+                fillColor: "#dce9df",
+                fillOpacity: 0.12,
+              },
+            }).addTo(contourLayer);
+            const bounds = boundaryLayer.getBounds();
+            if (bounds.isValid()) {
+              map.fitBounds(bounds, {
+                paddingTopLeft: [15, 60],
+                paddingBottomRight: [15, 15],
+              });
+            }
+          } catch (error) {
+            errors.push("contour communal indisponible");
+            console.error("Contour de Bordeaux", error);
+          }
+
+          installationsData.forEach((installation) => {
+            if (String(installation.cd_insee ?? "").trim().padStart(5, "0") !== bordeauxCode) return;
+            const x = nombre(installation.x);
+            const y = nombre(installation.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+            let longitude: number;
+            let latitude: number;
+            const epsg = String(installation.code_epsg ?? "").trim().toUpperCase();
+            if (epsg === "4326" || epsg === "EPSG:4326") {
+              longitude = x;
+              latitude = y;
+            } else {
+              [longitude, latitude] = proj4("EPSG:2154", "EPSG:4326", [x, y]);
+            }
+            if (!(latitude > 44.7 && latitude < 45.1 && longitude > -0.8 && longitude < -0.3)) return;
+
+            const rows: InfoRow[] = [
+              ["Adresse", String(installation.adresse || "Non renseignée")],
+              ["Activité", String(installation.lib_naf || "Non renseignée")],
+              ["Code AIOT", String(installation.code_aiot || "Non renseigné")],
+              ["Régime", String(installation.lib_regime || "Non renseigné")],
+              ["Seveso", String(installation.lib_seveso || "Non renseigné")],
+            ];
+            const popup =
+              `<strong>${echapper(installation.nom_ets || "Installation industrielle")}</strong><br>` +
+              rows.map(([label, value]) => `${echapper(label)} : ${echapper(value)}`).join("<br>");
+            L.circleMarker([latitude, longitude], {
+              radius: 6,
+              color: "#ffffff",
+              weight: 1.5,
+              fillColor: "#c43d32",
+              fillOpacity: 1,
+            })
+              .bindPopup(popup)
+              .on("click", () =>
+                showInformation(String(installation.nom_ets || "Installation industrielle"), rows),
+              )
+              .addTo(installationLayer);
+            installationCount += 1;
+          });
+
+          const heatFeatures: GeoJSON.Feature<
+            GeoJSON.Geometry,
+            { delta: number; date: string }
+          >[] = [];
+          chaleur.forEach((zone) => {
+            if (
+              String(zone.insee ?? "").trim().padStart(5, "0") !== bordeauxCode ||
+              !Number.isFinite(nombre(zone.delta))
+            ) {
+              return;
+            }
+            const rawGeometry = zone.geo_shape;
+            const geometry =
+              rawGeometry && typeof rawGeometry === "object" && "geometry" in rawGeometry
+                ? rawGeometry.geometry
+                : rawGeometry;
+            if (!geometry || typeof geometry !== "object" || !("type" in geometry)) return;
+            heatFeatures.push({
+              type: "Feature",
+              geometry: geometry as GeoJSON.Geometry,
+              properties: {
+                delta: nombre(zone.delta),
+                date: zone.date_releve || "Non renseignée",
+              },
+            });
+          });
+
+          L.geoJSON(
+            { type: "FeatureCollection", features: heatFeatures },
+            {
+              style: (feature) => {
+                const delta = feature?.properties.delta ?? 0;
+                const color =
+                  delta < 0 ? "#2166ac" : delta < 2 ? "#92c5de" : delta < 4 ? "#fdae61" : "#d7191c";
+                return { color, fillColor: color, weight: 0.8, fillOpacity: 0.65 };
+              },
+              onEachFeature: (feature, layer) => {
+                const delta = feature.properties.delta;
+                layer.bindTooltip(
+                  `Écart thermique : ${delta.toLocaleString("fr-FR")} °C`,
+                  { sticky: true },
+                );
+                layer.on("click", () => {
+                  showInformation("Zone thermique sélectionnée", [
+                    ["Écart thermique", `${delta.toLocaleString("fr-FR")} °C`],
+                    ["Date du relevé", feature.properties.date],
+                    [
+                      "Lecture",
+                      delta < 2
+                        ? "Écart inférieur à 2 °C selon cet indicateur."
+                        : delta < 4
+                          ? "Écart compris entre 2 et 4 °C selon cet indicateur."
+                          : "Écart de 4 °C ou plus selon cet indicateur.",
+                    ],
+                    [
+                      "À comparer",
+                      "Activez les couches sociales et industrielles pour explorer leur répartition à proximité.",
+                    ],
+                    [
+                      "Limite",
+                      "Cet indicateur ne prouve pas que les installations industrielles causent la chaleur.",
+                    ],
+                  ]);
+                  if (layer instanceof L.Polygon) {
+                    const bounds = layer.getBounds();
+                    if (bounds.isValid()) {
+                      map.fitBounds(bounds, { maxZoom: 15, padding: [25, 25] });
+                    }
+                  }
+                });
+              },
+            },
+          ).addTo(heatLayer);
+          heatCount = heatFeatures.length;
+
+          population.forEach((cell) => {
+            if (Number(cell.tmaille) !== 200) return;
+            const latitude = nombre(cell.lat);
+            const longitude = nombre(cell.lon);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+            const households = nombre(cell.men);
+            const poorHouseholds = nombre(cell.men_pauv);
+            const povertyRate =
+              households > 0 && Number.isFinite(poorHouseholds)
+                ? (poorHouseholds / households) * 100
+                : Number.NaN;
+            if (!Number.isFinite(povertyRate)) return;
+
+            const color =
+              povertyRate < 10
+                ? "#1a9850"
+                : povertyRate < 20
+                  ? "#91cf60"
+                  : povertyRate < 30
+                    ? "#fee08b"
+                    : povertyRate < 40
+                      ? "#fc8d59"
+                      : "#762a83";
+            const rows: InfoRow[] = [
+              ["Ménages pauvres", `${povertyRate.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`],
+              ["Ménages estimés", households.toLocaleString("fr-FR", { maximumFractionDigits: 1 })],
+              ["Échelle", "Carreau statistique de 200 m"],
+            ];
+            const popup =
+              "<strong>Données sociales</strong><br>" +
+              rows.map(([label, value]) => `${echapper(label)} : ${echapper(value)}`).join("<br>");
+            L.circleMarker([latitude, longitude], {
+              radius: 5,
+              color: "#333333",
+              weight: 0.6,
+              fillColor: color,
+              fillOpacity: 0.8,
+            })
+              .bindPopup(popup)
+              .on("click", () => showInformation("Données sociales sélectionnées", rows))
+              .addTo(socialLayer);
+            socialCount += 1;
+          });
+
+          const overlays = {
+            "Contour de Bordeaux": contourLayer,
+            "Installations industrielles et technologiques": installationLayer,
+            "Fortes chaleurs": heatLayer,
+            "Revenus / pauvreté (carreaux de 200 m)": socialLayer,
+          };
+          contourLayer.addTo(map);
+          installationLayer.addTo(map);
+          heatLayer.addTo(map);
+          socialLayer.addTo(map);
+          L.control.layers(null, overlays, { collapsed: false, position: "topright" }).addTo(map);
+          status.textContent =
+            `Carte chargée — installations : ${installationCount} ; zones thermiques : ${heatCount} ; ` +
+            `carreaux sociaux : ${socialCount}.` +
+            (errors.length ? ` Attention : ${errors.join("; ")}.` : "");
+          requestAnimationFrame(() => map.invalidateSize());
+        } catch (error) {
+          console.error("Carte de synthèse", error);
+          status.textContent =
+            "Une erreur empêche le chargement complet de la carte : " +
+            (error instanceof Error ? error.message : String(error));
+        }
+      };
+      void initialize();
+    });
+  };
+
+  document.addEventListener("DOMContentLoaded", initializeMaps, { once: true });
+  document.addEventListener("astro:page-load", initializeMaps);
+  document.addEventListener("astro:before-swap", () => {
+    maps.forEach((map) => map.remove());
+    maps.clear();
+  });
+  if (document.readyState !== "loading") initializeMaps();
+</script>
+
+<Layout title="Conclusion — Bacalan face aux risques cumulés">
   <article class="pt-12 sm:pt-20">
-    <header class="max-w-3xl">
+    <header class="max-w-4xl">
       <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
         04 · Conclusion
       </p>
-      <h1 class="text-4xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
-        Comprendre pour mieux se préparer
+      <h1 class="text-3xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-5xl">
+        Dans quelle mesure les habitants du quartier de Bacalan à Bordeaux cumulent-ils une
+        exposition aux risques industriels, aux fortes chaleurs et aux vulnérabilités sociales ?
       </h1>
-      <p class="mt-6 text-lg leading-8 text-slate-600">
-        À Bacalan, la prévention ne peut pas se limiter à un seul aléa.
-        Elle doit relier la connaissance des sites, les épisodes de chaleur et
-        les situations sociales qui rendent certains habitants plus fragiles.
+      <p class="mt-6 max-w-3xl text-lg leading-8 text-slate-600">
+        À Bordeaux, les cartes font apparaître plusieurs enjeux dans un même territoire :
+        établissements industriels, écarts de température et fragilités sociales. Mais les
+        données disponibles ne permettent pas encore d’affirmer que ces expositions se
+        cumulent précisément pour les habitants de Bacalan. C’est une piste documentée, pas
+        encore un diagnostic à l’échelle du quartier.
       </p>
     </header>
 
-    <section class="mt-16 grid gap-6 md:grid-cols-3" aria-label="Repères pour agir">
-      <div class="border-t-2 border-orange-600 pt-4">
-        <h2 class="text-xl font-semibold text-slate-900">Se situer</h2>
-        <p class="mt-3 leading-7 text-slate-600">Identifier les risques présents autour de son logement et de ses trajets.</p>
+    <section class="mt-12 grid gap-4 sm:grid-cols-3" aria-label="Repères issus des données">
+      <div class="rounded border border-red-200 bg-[#ffe2e2] p-5">
+        <p class="text-sm text-slate-700">Établissements recensés à Bordeaux</p>
+        <p class="mt-2 text-4xl font-semibold text-[#a52a24]">{installations.length}</p>
+        <p class="mt-1 text-sm text-slate-600">
+          dont {installationsAutorisation} sous le régime « Autorisation » et {installationsSeveso}
+          signalé(s) Seveso dans l’inventaire.
+        </p>
       </div>
-      <div class="border-t-2 border-orange-600 pt-4">
-        <h2 class="text-xl font-semibold text-slate-900">Se préparer</h2>
-        <p class="mt-3 leading-7 text-slate-600">Connaître les bons réflexes en cas de forte chaleur ou d’événement industriel.</p>
+      <div class="rounded border border-orange-200 bg-[#fff0df] p-5">
+        <p class="text-sm text-slate-700">Écarts de température supérieurs à 2 °C</p>
+        <p class="mt-2 text-4xl font-semibold text-[#b85c00]">{zonesAuDessus2}</p>
+        <p class="mt-1 text-sm text-slate-600">
+          dont {zonesAuDessus4} dépassent 4 °C, sur {zonesThermiques.length} zones recensées en 2022.
+        </p>
       </div>
-      <div class="border-t-2 border-orange-600 pt-4">
-        <h2 class="text-xl font-semibold text-slate-900">S’informer</h2>
-        <p class="mt-3 leading-7 text-slate-600">Vérifier les sources officielles et partager une information contextualisée.</p>
+      <div class="rounded border border-slate-200 bg-[#eef1ef] p-5">
+        <p class="text-sm text-slate-700">Ménages pauvres estimés</p>
+        <p class="mt-2 text-4xl font-semibold text-slate-900">{tauxPauvrete} %</p>
+        <p class="mt-1 text-sm text-slate-600">
+          parmi les ménages des {carreauxSociaux.length} carreaux statistiques de 200 m disponibles.
+        </p>
       </div>
     </section>
 
-    <div class="mt-16 flex flex-wrap gap-4">
-      <Btn href="/exploration">Explorer les risques</Btn>
-      <Btn href="/methode">Voir les sources et la méthode</Btn>
-    </div>
+    <section class="mt-16 max-w-3xl" aria-labelledby="answer-title">
+      <h2 id="answer-title" class="text-2xl font-semibold tracking-tight text-slate-900">
+        Trois réalités urbaines, une question de cumul encore ouverte
+      </h2>
+      <p class="mt-4 leading-7 text-slate-700">
+        L’inventaire localise {installations.length} établissements à Bordeaux, dont
+        {` ${installationsAutorisation}`} sous régime d’autorisation ; il signale également
+        {` ${installationsSeveso}`} établissement(s) Seveso. Ces catégories décrivent des
+        statuts réglementaires et ne signifient pas que chaque site expose de la même façon
+        les riverains. Les relevés thermiques de 2022 font, eux, état de {zonesAuDessus2}
+        zones où l’écart dépasse 2 °C, parmi {` ${zonesThermiques.length}`} zones recensées
+        dans la commune. Enfin, les carreaux sociaux de 200 m indiquent qu’environ
+        {` ${tauxPauvrete} %`} des ménages représentés sont comptés parmi les ménages pauvres.
+      </p>
+      <p class="mt-4 leading-7 text-slate-700">
+        Le rapprochement exploratoire de la chaleur et de la pauvreté n’indique pas une
+        superposition uniforme : seuls {`${cellulesChaleurEtSocial} carreaux sur ${carreauxSociaux.length}`} ont pu
+        être rapprochés d’un relevé thermique dans le rayon retenu ({tauxCouverture} %). Dans
+        les groupes couverts, la proportion de carreaux dont l’écart moyen dépasse 2 °C va de
+        {` ${shareHotZonesByPovertyGroup[0]} %`} parmi les moins pauvres à
+        {` ${shareHotZonesByPovertyGroup[3]} %`} parmi les plus pauvres, avec des variations
+        intermédiaires. La carte ci-dessous permet de confronter ces couches, mais une
+        proximité visuelle n’établit ni causalité ni exposition individuelle.
+      </p>
+    </section>
+
+    <section class="mt-16" aria-labelledby="map-title">
+      <div class="max-w-3xl">
+        <h2 id="map-title" class="text-3xl font-semibold tracking-tight text-slate-900">
+          Explorer les données, couche par couche
+        </h2>
+        <p class="mt-4 leading-7 text-slate-600">
+          Activez ou désactivez les couches avec le contrôle en haut à droite. Cliquez sur
+          une zone thermique ou un point pour afficher ses informations dans le panneau sous
+          la carte. Les marqueurs sociaux représentent la part estimée de ménages pauvres dans
+          les carreaux de 200 m ; ils ne constituent pas une carte des revenus.
+        </p>
+      </div>
+
+      <figure class="mt-6">
+        <div
+          class="w-full font-sans text-slate-800"
+          data-conclusion-map
+          aria-label="Carte interactive de Bordeaux présentant les installations, la chaleur et les données sociales"
+        >
+          <p
+            class="mb-3 text-sm text-slate-600"
+            data-map-status
+            role="status"
+            aria-live="polite"
+          >
+            Chargement des données…
+          </p>
+          <div
+            class="h-[620px] w-full overflow-hidden rounded-lg border border-slate-300 bg-slate-200"
+            data-map-canvas
+          >
+          </div>
+          <figcaption class="mt-2 text-xs leading-5 text-slate-500">
+            Sources : Bordeaux Métropole (données thermiques 2022), inventaire des installations
+            en Gironde, fichier local des carreaux de population, geo.api.gouv.fr et
+            OpenStreetMap. Les points sociaux sont limités aux carreaux de 200 m.
+          </figcaption>
+          <div class="mt-4 rounded-lg border border-[#d5ddd7] bg-[#f5f8f5] p-4 sm:p-5">
+            <strong class="text-base text-slate-900">Lire la carte</strong>
+            <p class="my-2 text-sm leading-6 text-slate-700">
+              Sélectionnez une zone ou un point pour explorer les données disponibles et
+              comparer leur répartition.
+            </p>
+            <div
+              class="text-sm leading-6 text-slate-700"
+              data-map-info
+              aria-live="polite"
+            >
+              Cliquez sur une zone colorée ou un marqueur pour commencer.
+            </div>
+          </div>
+        </div>
+      </figure>
+    </section>
+
+    <section class="mt-16 grid gap-8 border-y border-slate-300 py-10 lg:grid-cols-2">
+      <div>
+        <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
+          Ce que l’enquête permet d’affirmer
+        </p>
+        <h2 class="text-2xl font-semibold tracking-tight text-slate-900">
+          Des signaux à prendre au sérieux, sans les confondre
+        </h2>
+        <p class="mt-4 leading-7 text-slate-600">
+          La présence d’activités industrielles, les contrastes thermiques et les fragilités
+          sociales sont documentés à Bordeaux. Leur représentation commune aide à poser la
+          question de la justice environnementale : qui vit près des risques, qui souffre
+          davantage de la chaleur, et qui dispose de moins de ressources pour s’en protéger ?
+          Les données réunies ici ouvrent cette enquête, mais ne suffisent pas à désigner les
+          habitants les plus exposés.
+        </p>
+      </div>
+      <div>
+        <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
+          Les limites du diagnostic
+        </p>
+        <h2 class="text-2xl font-semibold tracking-tight text-slate-900">
+          Bacalan demande une lecture à son échelle
+        </h2>
+        <p class="mt-4 leading-7 text-slate-600">
+          Plusieurs chiffres présentés ici couvrent Bordeaux entière, tandis que les relevés
+          thermiques datent de 2022 et que le croisement social-thermique ne concerne qu’une
+          partie des carreaux. La carte superpose des données agrégées : elle ne suit ni les
+          déplacements, ni l’état des logements, ni la santé des personnes. Pour mesurer le
+          cumul à Bacalan, il faut délimiter précisément le quartier, harmoniser les dates et
+          les échelles, puis confronter les cartes à des indicateurs locaux de vulnérabilité
+          et aux périmètres réglementaires des établissements.
+        </p>
+      </div>
+    </section>
+
+    <section class="mt-16" aria-labelledby="action-title">
+      <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
+        Comprendre pour mieux agir
+      </p>
+      <h2 id="action-title" class="text-3xl font-semibold tracking-tight text-slate-900">
+        De la carte à la prévention
+      </h2>
+      <p class="mt-4 max-w-3xl leading-7 text-slate-600">
+        La réponse ne tient pas à une carte unique, mais à une prévention qui croise les
+        informations et les besoins du terrain. Trois gestes peuvent guider la suite :
+      </p>
+      <div class="mt-8 grid gap-6 md:grid-cols-3" aria-label="Repères pour agir">
+        <div class="border-t-2 border-orange-600 pt-4">
+          <h3 class="text-xl font-semibold text-slate-900">Se situer</h3>
+          <p class="mt-3 leading-7 text-slate-600">
+            Repérer les installations et les zones de chaleur autour du logement, des écoles,
+            des lieux de travail et des trajets quotidiens.
+          </p>
+        </div>
+        <div class="border-t-2 border-orange-600 pt-4">
+          <h3 class="text-xl font-semibold text-slate-900">Se préparer</h3>
+          <p class="mt-3 leading-7 text-slate-600">
+            Connaître les consignes officielles en cas de forte chaleur ou d’incident
+            industriel, et identifier les personnes qui pourraient avoir besoin d’aide.
+          </p>
+        </div>
+        <div class="border-t-2 border-orange-600 pt-4">
+          <h3 class="text-xl font-semibold text-slate-900">S’informer</h3>
+          <p class="mt-3 leading-7 text-slate-600">
+            Vérifier les sources, les dates et les échelles des données, puis partager une
+            information contextualisée plutôt qu’une conclusion hâtive.
+          </p>
+        </div>
+      </div>
+    </section>
   </article>
 </Layout>
