@@ -3,6 +3,7 @@ import Layout from "../layouts/Layout.astro";
 import PlotFigure from "../components/PlotFigure.astro";
 import * as Plot from "@observablehq/plot";
 import population from "../assets/pop.json";
+import chaleur from "../assets/chaleur.json";
 
 const number = (value) => Number(value) || 0;
 const cells200m = population.filter((cell) => Number(cell.tmaille) === 200);
@@ -28,9 +29,9 @@ const ageGroups = [
   },
 ];
 
-const totalPopulation = population.reduce((total, cell) => total + number(cell.ind), 0);
-const totalPoor = population.reduce((total, cell) => total + number(cell.men_pauv), 0);
-const povertyRate = totalPopulation ? ((totalPoor / totalPopulation) * 100).toFixed(2) : "0.00";
+const totalHouseholds = cells200m.reduce((total, cell) => total + number(cell.men), 0);
+const totalPoor = cells200m.reduce((total, cell) => total + number(cell.men_pauv), 0);
+const povertyRate = totalHouseholds ? ((totalPoor / totalHouseholds) * 100).toFixed(1) : "0.0";
 const densityCells = cells200m
   .map((cell) => ({
     x: cell.lon,
@@ -39,6 +40,76 @@ const densityCells = cells200m
   }))
   .sort((a, b) => b.density - a.density)
   .slice(0, 20);
+
+const povertyHeatCells = cells200m
+  .filter((cell) => number(cell.men) > 0 && Number.isFinite(Number(cell.lon)) && Number.isFinite(Number(cell.lat)))
+  .map((cell) => ({
+    lon: Number(cell.lon),
+    lat: Number(cell.lat),
+    povertyRate: (number(cell.men_pauv) / number(cell.men)) * 100,
+    heatValues: [] as number[],
+  }));
+
+chaleur
+  .filter(
+    (zone) =>
+      String(zone.insee) === "33063" &&
+      Number.isFinite(Number(zone.delta)) &&
+      Number.isFinite(Number(zone.geo_point_2d?.lon)) &&
+      Number.isFinite(Number(zone.geo_point_2d?.lat)),
+  )
+  .forEach((zone) => {
+    const longitude = Number(zone.geo_point_2d.lon);
+    const latitude = Number(zone.geo_point_2d.lat);
+    let closestCell: (typeof povertyHeatCells)[number] | null = null;
+    let shortestDistance = Infinity;
+
+    povertyHeatCells.forEach((cell) => {
+      const northSouth = (cell.lat - latitude) * 111_320;
+      const eastWest = (cell.lon - longitude) * 111_320 * Math.cos((latitude * Math.PI) / 180);
+      const distance = Math.hypot(northSouth, eastWest);
+      if (distance < shortestDistance) {
+        closestCell = cell;
+        shortestDistance = distance;
+      }
+    });
+
+    if (closestCell && shortestDistance <= 150) {
+      closestCell.heatValues.push(Number(zone.delta));
+    }
+  });
+
+const matchedPovertyHeatCells = povertyHeatCells
+  .filter((cell) => cell.heatValues.length > 0)
+  .map((cell) => ({
+    povertyRate: cell.povertyRate,
+    meanHeatDelta:
+      cell.heatValues.reduce((total, value) => total + value, 0) / cell.heatValues.length,
+  }));
+const povertyHeatCoverage = povertyHeatCells.length
+  ? Math.round((100 * matchedPovertyHeatCells.length) / povertyHeatCells.length)
+  : 0;
+const povertySortedCells = [...matchedPovertyHeatCells].sort(
+  (a, b) => a.povertyRate - b.povertyRate,
+);
+const povertyHeatQuartiles = Array.from({ length: 4 }, (_, index) => {
+  const debut = Math.floor((index * povertySortedCells.length) / 4);
+  const fin = Math.floor(((index + 1) * povertySortedCells.length) / 4);
+  const groupe = povertySortedCells.slice(debut, fin);
+  const partPauvreMoyenne = groupe.length
+    ? groupe.reduce((total, cell) => total + cell.povertyRate, 0) / groupe.length
+    : 0;
+  const zonesChaudes = groupe.filter((cell) => cell.meanHeatDelta > 2).length;
+
+  return {
+    groupe: `${["Faible", "Modérée", "Élevée", "Très élevée"][index]} · ${partPauvreMoyenne.toFixed(0)} %`,
+    nombreCarreaux: groupe.length,
+    partPauvreMoyenne,
+    partZonesChaudes: groupe.length ? (100 * zonesChaudes) / groupe.length : 0,
+  };
+});
+const firstPovertyQuartile = povertyHeatQuartiles[0];
+const lastPovertyQuartile = povertyHeatQuartiles[povertyHeatQuartiles.length - 1];
 ---
 
 <Layout title="Révélation des vulnérabilités">
@@ -57,9 +128,9 @@ const densityCells = cells200m
     </header>
 
     <section class="mt-12 grid gap-4 sm:grid-cols-2" aria-label="Indicateurs de vulnérabilité">
-      <div class="rounded border border-slate-200 bg-[#eef1ef] p-6">
-        <p class="text-sm text-slate-600">Part calculée des personnes pauvres</p>
-        <p class="mt-2 text-4xl font-semibold text-slate-900">{povertyRate}%</p>
+      <div class="rounded border border-orange-200 bg-[#fff0df] p-6">
+        <p class="text-sm text-orange-900">Part estimée des ménages pauvres (carreaux de 200 m)</p>
+        <p class="mt-2 text-4xl font-semibold text-[#b85c00]">{povertyRate}%</p>
       </div>
       <div class="rounded border border-slate-200 bg-[#eef1ef] p-6">
         <p class="text-sm text-slate-600">Carreaux de 200 m analysés</p>
@@ -87,27 +158,92 @@ const densityCells = cells200m
       />
     </figure>
 
-    <figure class="mt-12 rounded border border-slate-200 bg-[#eef1ef] p-4">
-      <figcaption class="mb-4 max-w-2xl text-sm leading-6 text-slate-600">
-        Les vingt carreaux de 200 m présentant les plus fortes densités de personnes
-        pauvres. La densité est calculée en personnes par km² : elle ne doit pas être
-        confondue avec le volume total de personnes pauvres.
-      </figcaption>
-      <PlotFigure
-        options={{
-          height: 360,
-          x: { label: "Longitude", axis: null },
-          y: { label: "Latitude", axis: null },
-          color: { scheme: "oranges", label: "Personnes pauvres par km²" },
-          marks: [
-            Plot.dot(densityCells, { x: "x", y: "y", r: 7, fill: "density", stroke: "#7c2d12" }),
-            Plot.frame(),
-          ],
-        }}
-      />
-    </figure>
+    <section class="mt-20" aria-labelledby="social-heat-title">
+      <div class="max-w-3xl">
+        <h2 id="social-heat-title" class="text-3xl font-semibold tracking-tight text-slate-900">
+          La chaleur frappe-t-elle davantage les quartiers les plus pauvres ?
+        </h2>
+        <p class="mt-4 leading-7 text-slate-600">
+          Pour examiner cette question, les carreaux de 200 mètres disposant à la fois de
+          données sociales et thermiques sont répartis en quatre groupes, du moins pauvre au
+          plus pauvre. Les barres comparent, dans chaque groupe, la part des carreaux où
+          l’écart thermique moyen dépasse 2 °C. Le pourcentage sous chaque groupe indique sa
+          part moyenne de ménages pauvres.
+        </p>
+      </div>
 
-    <section class="mt-16 max-w-3xl border-l-4 border-orange-600 pl-6" aria-labelledby="reading-title">
+      <figure class="mt-8 rounded border border-slate-200 bg-[#eef1ef] p-4 sm:p-6">
+        <figcaption class="mb-5 max-w-3xl">
+          <h3 class="text-lg font-semibold text-slate-900">
+            Les zones les plus pauvres sont-elles aussi les plus chaudes ?
+          </h3>
+          <p class="mt-1 text-sm leading-6 text-slate-600">
+            Part des carreaux dont l’écart thermique moyen dépasse 2 °C, selon le niveau moyen
+            de pauvreté du groupe
+          </p>
+        </figcaption>
+        <PlotFigure
+          options={{
+            height: 380,
+            marginLeft: 65,
+              marginBottom: 85,
+              x: { label: null, tickRotate: -12 },
+            y: {
+              domain: [0, 100],
+              grid: true,
+              label: "Carreaux avec un écart moyen supérieur à 2 °C (%)",
+            },
+            marks: [
+              Plot.barY(povertyHeatQuartiles, {
+                x: "groupe",
+                y: "partZonesChaudes",
+                fill: "#c43d32",
+                title: (groupe) =>
+                  `${groupe.groupe}\n${groupe.partZonesChaudes.toFixed(1)} % des carreaux dépassent 2 °C`,
+              }),
+              Plot.text(povertyHeatQuartiles, {
+                x: "groupe",
+                y: "partZonesChaudes",
+                text: (groupe) => `${groupe.partZonesChaudes.toFixed(0)} %`,
+                dy: -10,
+                fontWeight: "bold",
+                fill: "#7f1d1d",
+              }),
+              Plot.ruleY([0]),
+            ],
+          }}
+        />
+        <div class="mt-4 grid gap-2 text-sm text-slate-700 sm:grid-cols-4">
+          {povertyHeatQuartiles.map((groupe, index) => (
+            <p class="rounded bg-white/70 px-3 py-2">
+              Groupe {index + 1} : {groupe.nombreCarreaux} carreaux · pauvreté moyenne
+              {` ${groupe.partPauvreMoyenne.toFixed(1)} %`}
+            </p>
+          ))}
+        </div>
+        <p class="mt-4 text-xs leading-5 text-slate-500">
+          Sources : carreaux de population de 200 m (pop.json) et relevés thermiques 2022 de
+          Bordeaux Métropole (chaleur.json). Un relevé est rattaché au centre de carreau le
+          plus proche, dans un rayon maximal de 150 m. Les résultats portent sur
+          {` ${matchedPovertyHeatCells.length} carreaux appariés sur ${povertyHeatCells.length}`}
+          {` disponibles (${povertyHeatCoverage} %).`}
+        </p>
+      </figure>
+
+      <p class="mt-6 max-w-3xl border-l-4 border-orange-600 pl-5 leading-7 text-slate-700">
+        <strong>Ce que montre cette comparaison :</strong> {firstPovertyQuartile.partZonesChaudes.toFixed(0)}
+        % des carreaux du groupe le moins pauvre dépassent le seuil, contre
+        {` ${lastPovertyQuartile.partZonesChaudes.toFixed(0)} %`} dans le groupe le plus pauvre.
+        La hausse n’est pas régulière d’un groupe à l’autre et cet écart ne prouve pas de lien
+        de cause à effet. De plus, le croisement ne couvre que
+        {` ${matchedPovertyHeatCells.length} carreaux sur ${povertyHeatCells.length}`}
+        disponibles et reste à l’échelle de Bordeaux. Pour répondre à la question de
+        l’exposition cumulée à Bacalan, il faudra isoler le quartier et consolider les données
+        locales.
+      </p>
+    </section>
+
+    <section class="mt-16 max-w-3xl">
       <h2 id="reading-title" class="text-2xl font-semibold text-slate-900">
         Lire une vulnérabilité, pas désigner un quartier
       </h2>
