@@ -116,12 +116,9 @@ const sectors = Object.entries(
             }
           } else {
             const total = valeursBordeaux.length;
-            const plusDe2 = valeursBordeaux.filter((valeur) => valeur > 2).length;
-            const plusDe4 = valeursBordeaux.filter((valeur) => valeur > 4).length;
             const formatterPourcentage = new Intl.NumberFormat("fr-FR", {
               maximumFractionDigits: 1,
             });
-
             const mettreAJourIndicateur = (seuil: "2" | "4", nombre: number) => {
               const valeur = document.querySelector<HTMLElement>(
                 `[data-heat-count="${seuil}"]`,
@@ -135,8 +132,14 @@ const sectors = Object.entries(
               }
             };
 
-            mettreAJourIndicateur("2", plusDe2);
-            mettreAJourIndicateur("4", plusDe4);
+            mettreAJourIndicateur(
+              "2",
+              valeursBordeaux.filter((valeur) => valeur > 2).length,
+            );
+            mettreAJourIndicateur(
+              "4",
+              valeursBordeaux.filter((valeur) => valeur > 4).length,
+            );
             document.querySelectorAll<HTMLElement>("[data-heat-total]").forEach((element) => {
               element.textContent = String(total);
             });
@@ -358,21 +361,14 @@ const sectors = Object.entries(
         Où les risques se concentrent-ils ?
       </h1>
       <p class="mt-6 text-lg leading-8 text-slate-600">
-<<<<<<< HEAD
         La chaleur urbaine ne se répartit pas uniformément. À Bordeaux et dans les communes
         voisines, les relevés de 2022 dessinent une géographie contrastée des zones plus
         chaudes ou plus fraîches. Une seconde carte situe les installations industrielles
         recensées dans la ville : deux phénomènes à observer côte à côte, sans les confondre.
-=======
-        Cette carte croise les 626 zones thermiques dont l’écart dépasse 4 °C
-        avec les installations industrielles recensées à Bordeaux. Les deux calques
-        peuvent être affichés séparément pour lire chaque phénomène.
->>>>>>> cf1d4c96bcc48fbb8ac568a4e9a501f4e4cadb57
       </p>
     </header>
 
     <figure class="mt-12">
-<<<<<<< HEAD
       <div
         class="w-full font-sans"
         data-heat-map
@@ -391,35 +387,17 @@ const sectors = Object.entries(
           le détail apparaît au survol ou au clic.
         </figcaption>
       </div>
-=======
-      <figcaption class="mb-4 max-w-3xl text-sm leading-6 text-slate-600">
-        Carte interactive : les zones thermiques sont filtrées sur un écart strictement
-        supérieur à 4 °C ; les installations industrielles sont représentées par des points
-        orange. Utilisez le contrôle en haut à droite pour activer ou désactiver les calques.
-      </figcaption>
-      <RiskMap heatZones={heatZones} installations={installations} />
->>>>>>> cf1d4c96bcc48fbb8ac568a4e9a501f4e4cadb57
     </figure>
 
     <section class="mt-12 max-w-3xl" aria-labelledby="heat-reading-title">
-      <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
-        Lire le territoire
-      </p>
       <h2 id="heat-reading-title" class="text-2xl font-semibold tracking-tight text-slate-900">
         Une chaleur qui ne s’arrête pas aux frontières communales
       </h2>
       <p class="mt-4 leading-7 text-slate-600">
-        Les écarts de température dessinent une mosaïque plutôt qu’un front uniforme. En
-        rapprochant Bordeaux, Le Bouscat et Bruges, la carte rend visibles des contrastes
-        continus au-delà des limites administratives. Chaque polygone correspond à une zone
-        de relevé ; sa valeur, exprimée en degrés Celsius, se consulte en passant le curseur
-        ou en cliquant dessus.
+       Les températures ne sont pas les mêmes partout : la carte montre des zones plus chaudes et d’autres plus fraîches. En observant Bordeaux, Le Bouscat et Bruges, on remarque que ces différences se prolongent au-delà des limites entre les communes. Chaque zone colorée correspond à un secteur de relevé. En passant la souris dessus ou en cliquant, on peut consulter son écart de température en degrés Celsius.
       </p>
       <p class="mt-4 leading-7 text-slate-600">
-        Ces données décrivent une situation observée en 2022 : elles ne constituent ni une
-        prévision, ni à elles seules une mesure de l’exposition de chaque habitant. Elles
-        offrent néanmoins un premier repère pour comprendre où la chaleur urbaine et la
-        fraîcheur se répartissent.
+        Ces données correspondent à la situation observée en 2022. Elles ne permettent donc pas de prévoir les températures futures ni de savoir précisément à quel point chaque habitant est exposé à la chaleur. Elles donnent toutefois un premier aperçu des endroits où la chaleur urbaine est plus ou moins marquée.
       </p>
     </section>
 
@@ -546,24 +524,14 @@ const sectors = Object.entries(
 
     <section class="mt-20 grid gap-10 lg:grid-cols-[1fr_1.5fr]" aria-labelledby="sectors-title">
       <div>
-        <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
-          Les activités recensées
-        </p>
         <h2 id="sectors-title" class="text-3xl font-semibold tracking-tight text-slate-900">
           Des installations aux secteurs variés
         </h2>
         <p class="mt-4 leading-7 text-slate-600">
-<<<<<<< HEAD
           La carte localise les établissements ; ce classement en donne une autre lecture,
           par activité. Il présente les dix secteurs les plus représentés dans l’inventaire
           bordelais. Les barres comptent des installations : elles ne mesurent ni leurs
           émissions ni leur niveau de danger.
-=======
-          Le graphique présente les dix secteurs d’activité les plus représentés parmi les
-          installations recensées dans la commune de Bordeaux, qui constitue le périmètre
-          disponible pour le focus sur Bacalan. Les valeurs sont des effectifs et non une
-          mesure directe du niveau de danger.
->>>>>>> cf1d4c96bcc48fbb8ac568a4e9a501f4e4cadb57
         </p>
       </div>
 
