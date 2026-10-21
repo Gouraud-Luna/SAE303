@@ -4,30 +4,41 @@ import PlotFigure from "../components/PlotFigure.astro";
 import * as Plot from "@observablehq/plot";
 import population from "../assets/pop.json";
 
+const number = (value) => Number(value) || 0;
+const cells200m = population.filter((cell) => Number(cell.tmaille) === 200);
+
 const ageGroups = [
   {
     groupe: "0–17 ans",
     population: population.reduce(
-      (total, cell) => total + cell.ind_0_3 + cell.ind_4_5 + cell.ind_6_10 + cell.ind_11_17,
+      (total, cell) =>       total + number(cell.ind_0_3) + number(cell.ind_4_5) + number(cell.ind_6_10) + number(cell.ind_11_17),
       0,
     ),
   },
   {
     groupe: "18–64 ans",
     population: population.reduce(
-      (total, cell) => total + cell.ind_18_24 + cell.ind_25_39 + cell.ind_40_54 + cell.ind_55_64,
+      (total, cell) =>       total + number(cell.ind_18_24) + number(cell.ind_25_39) + number(cell.ind_40_54) + number(cell.ind_55_64),
       0,
     ),
   },
   {
     groupe: "65 ans et plus",
-    population: population.reduce((total, cell) => total + cell.ind_65_79 + cell.ind_80p, 0),
+    population: population.reduce((total, cell) => total + number(cell.ind_65_79) + number(cell.ind_80p), 0),
   },
 ];
 
-const totalPopulation = population.reduce((total, cell) => total + cell.ind, 0);
-const totalPoor = population.reduce((total, cell) => total + cell.men_pauv, 0);
+const totalPopulation = population.reduce((total, cell) => total + number(cell.ind), 0);
+const totalPoor = population.reduce((total, cell) => total + number(cell.men_pauv), 0);
 const povertyRate = totalPopulation ? ((totalPoor / totalPopulation) * 100).toFixed(2) : "0.00";
+const densityCells = cells200m
+  .map((cell) => ({
+    x: cell.lon,
+    y: cell.lat,
+    density: number(cell.men_pauv) / 0.04,
+  }))
+  .sort((a, b) => b.density - a.density)
+  .slice(0, 20);
 ---
 
 <Layout title="Révélation des vulnérabilités">
@@ -51,8 +62,8 @@ const povertyRate = totalPopulation ? ((totalPoor / totalPopulation) * 100).toFi
         <p class="mt-2 text-4xl font-semibold text-slate-900">{povertyRate}%</p>
       </div>
       <div class="rounded border border-slate-200 bg-[#eef1ef] p-6">
-        <p class="text-sm text-slate-600">Carreaux statistiques analysés</p>
-        <p class="mt-2 text-4xl font-semibold text-slate-900">{population.length}</p>
+        <p class="text-sm text-slate-600">Carreaux de 200 m analysés</p>
+        <p class="mt-2 text-4xl font-semibold text-slate-900">{cells200m.length}</p>
       </div>
     </section>
 
@@ -71,6 +82,26 @@ const povertyRate = totalPopulation ? ((totalPoor / totalPopulation) * 100).toFi
           marks: [
             Plot.barY(ageGroups, { x: "groupe", y: "population", fill: "groupe" }),
             Plot.ruleY([0]),
+          ],
+        }}
+      />
+    </figure>
+
+    <figure class="mt-12 rounded border border-slate-200 bg-[#eef1ef] p-4">
+      <figcaption class="mb-4 max-w-2xl text-sm leading-6 text-slate-600">
+        Les vingt carreaux de 200 m présentant les plus fortes densités de personnes
+        pauvres. La densité est calculée en personnes par km² : elle ne doit pas être
+        confondue avec le volume total de personnes pauvres.
+      </figcaption>
+      <PlotFigure
+        options={{
+          height: 360,
+          x: { label: "Longitude", axis: null },
+          y: { label: "Latitude", axis: null },
+          color: { scheme: "oranges", label: "Personnes pauvres par km²" },
+          marks: [
+            Plot.dot(densityCells, { x: "x", y: "y", r: 7, fill: "density", stroke: "#7c2d12" }),
+            Plot.frame(),
           ],
         }}
       />

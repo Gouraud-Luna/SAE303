@@ -358,14 +358,21 @@ const sectors = Object.entries(
         Où les risques se concentrent-ils ?
       </h1>
       <p class="mt-6 text-lg leading-8 text-slate-600">
+<<<<<<< HEAD
         La chaleur urbaine ne se répartit pas uniformément. À Bordeaux et dans les communes
         voisines, les relevés de 2022 dessinent une géographie contrastée des zones plus
         chaudes ou plus fraîches. Une seconde carte situe les installations industrielles
         recensées dans la ville : deux phénomènes à observer côte à côte, sans les confondre.
+=======
+        Cette carte croise les 626 zones thermiques dont l’écart dépasse 4 °C
+        avec les installations industrielles recensées à Bordeaux. Les deux calques
+        peuvent être affichés séparément pour lire chaque phénomène.
+>>>>>>> cf1d4c96bcc48fbb8ac568a4e9a501f4e4cadb57
       </p>
     </header>
 
     <figure class="mt-12">
+<<<<<<< HEAD
       <div
         class="w-full font-sans"
         data-heat-map
@@ -384,6 +391,14 @@ const sectors = Object.entries(
           le détail apparaît au survol ou au clic.
         </figcaption>
       </div>
+=======
+      <figcaption class="mb-4 max-w-3xl text-sm leading-6 text-slate-600">
+        Carte interactive : les zones thermiques sont filtrées sur un écart strictement
+        supérieur à 4 °C ; les installations industrielles sont représentées par des points
+        orange. Utilisez le contrôle en haut à droite pour activer ou désactiver les calques.
+      </figcaption>
+      <RiskMap heatZones={heatZones} installations={installations} />
+>>>>>>> cf1d4c96bcc48fbb8ac568a4e9a501f4e4cadb57
     </figure>
 
     <section class="mt-12 max-w-3xl" aria-labelledby="heat-reading-title">
@@ -538,10 +553,17 @@ const sectors = Object.entries(
           Des installations aux secteurs variés
         </h2>
         <p class="mt-4 leading-7 text-slate-600">
+<<<<<<< HEAD
           La carte localise les établissements ; ce classement en donne une autre lecture,
           par activité. Il présente les dix secteurs les plus représentés dans l’inventaire
           bordelais. Les barres comptent des installations : elles ne mesurent ni leurs
           émissions ni leur niveau de danger.
+=======
+          Le graphique présente les dix secteurs d’activité les plus représentés parmi les
+          installations recensées dans la commune de Bordeaux, qui constitue le périmètre
+          disponible pour le focus sur Bacalan. Les valeurs sont des effectifs et non une
+          mesure directe du niveau de danger.
+>>>>>>> cf1d4c96bcc48fbb8ac568a4e9a501f4e4cadb57
         </p>
       </div>
 
