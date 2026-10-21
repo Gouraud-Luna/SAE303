@@ -1,11 +1,32 @@
 ---
-import PlotFigure from "../components/PlotFigure.astro";
 import Layout from "../layouts/Layout.astro";
-import * as Plot from "@observablehq/plot";
 ---
 
-<Layout title="Home">
-  <h1 class="text-2xl">Dans quelle mesure les habitants du quartier de Bacalan à
-     Bordeaux cumulent-ils une exposition aux risques industriels, aux fortes chaleurs et 
-     aux vulnérabilités sociales ? </h1>
+<Layout title="Accueil">
+  <div class="min-h-[calc(100vh-6rem)] pt-16 sm:pt-24">
+    <h1 class="m-0 max-w-4xl text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
+      Bordeaux Métropole sous tension : portrait d'un territoire exposé.
+    </h1>
+
+    <div class="mt-10 max-w-3xl space-y-6 text-base leading-7 text-slate-600 sm:text-lg">
+      <p>
+        Bordeaux Métropole compte de nombreuses installations industrielles
+        et technologiques, dont 198 installations classées recensées fin 2017.
+        Leur proximité avec les zones habitées soulève des questions quant aux risques
+        auxquels les habitants peuvent être exposés, notamment dans un contexte de fortes chaleurs.
+      </p>
+      <p>
+        Dès lors, dans quelle mesure les habitants du quartier de Bacalan, à Bordeaux,
+        cumulent-ils une exposition aux risques industriels, aux fortes chaleurs et
+        aux vulnérabilités sociales ? Ce quartier constitue notre terrain d’étude avec un
+        taux de 33% de pauvreté comptabilisant 1 601 habitants pour analyser les liens entre ces
+        différents facteurs.
+      </p>
+      <p>
+        À travers cette étude, nous souhaitons mettre en lumière les inégalités territoriales
+        face aux risques environnementaux et aux difficultés sociales, tout en sensibilisant les
+        habitants de Bordeaux Métropole à des réalités parfois méconnues.
+      </p>
+    </div>
+  </div>
 </Layout>
