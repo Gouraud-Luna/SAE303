@@ -9,7 +9,7 @@ import netlify from '@astrojs/netlify';
 export default defineConfig({
   vite: {
     plugins: [tailwindcss()]
-  },
+  }, 
 
-// adapter: netlify()
+ adapter: netlify()
 });
