@@ -1,0 +1,122 @@
+---
+import "leaflet/dist/leaflet.css";
+
+const { heatZones = [], installations = [] } = Astro.props;
+---
+
+<div
+  class="risk-map relative z-0 h-[520px] w-full overflow-hidden rounded border border-slate-300 bg-slate-200"
+  data-risk-map
+  data-heat={JSON.stringify(heatZones)}
+  data-installations={JSON.stringify(installations)}
+  aria-label="Carte interactive des zones de chaleur et des installations industrielles à Bordeaux"
+  role="img"
+></div>
+
+<style>
+  .risk-map :global(.leaflet-control-layers) {
+    background: #ffffff;
+    color: #1e293b;
+    display: block;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    padding: 0.35rem;
+  }
+
+  .risk-map :global(.leaflet-control-layers-list) {
+    margin: 0.25rem;
+  }
+</style>
+
+<script>
+  import L from "leaflet";
+  import proj4 from "proj4";
+
+  proj4.defs(
+    "EPSG:2154",
+    "+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +units=m +no_defs",
+  );
+
+  const initializeRiskMaps = () => {
+    document.querySelectorAll("[data-risk-map]").forEach((element) => {
+      if (element.dataset.initialized === "true") return;
+
+      const heatZones = JSON.parse(element.dataset.heat || "[]");
+      const installations = JSON.parse(element.dataset.installations || "[]");
+      const map = L.map(element).setView([44.85, -0.58], 12);
+      element.dataset.initialized = "true";
+
+      const baseLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+
+      const temperatureValues = heatZones
+        .map((zone) => Number(zone.properties?.delta))
+        .filter(Number.isFinite);
+      const temperatureLimit = Math.max(
+        Math.abs(Math.min(...temperatureValues)),
+        Math.abs(Math.max(...temperatureValues)),
+        1,
+      );
+
+      const temperatureColor = (value) => {
+        const ratio = Math.max(-1, Math.min(1, value / temperatureLimit));
+        if (ratio < 0) {
+          const intensity = Math.round(255 * (1 + ratio));
+          return `rgb(${intensity}, ${intensity}, 255)`;
+        }
+
+        const intensity = Math.round(255 * (1 - ratio));
+        return `rgb(255, ${intensity}, ${intensity})`;
+      };
+
+      const heatLayer = L.geoJSON(heatZones, {
+        style: (feature) => {
+          const delta = Number(feature?.properties?.delta || 0);
+          const color = temperatureColor(delta);
+          return {
+          color,
+          fillColor: color,
+          fillOpacity: 0.65,
+          weight: 0.5,
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const delta = Number(feature.properties.delta);
+          const label = delta > 0 ? "plus chaud" : delta < 0 ? "plus froid" : "neutre";
+          layer.bindPopup(`Zone thermique : ${Math.abs(delta)} °C, ${label}`);
+        },
+      });
+
+      const lambert93 = "EPSG:2154";
+      const wgs84 = "EPSG:4326";
+      const installationLayer = L.layerGroup();
+
+      installations.forEach((installation) => {
+        const [longitude, latitude] = proj4(lambert93, wgs84, [installation.x, installation.y]);
+        L.circleMarker([latitude, longitude], {
+          color: "#9a3412",
+          fillColor: "#f97316",
+          fillOpacity: 0.95,
+          radius: 7,
+          weight: 2,
+        })
+          .bindPopup(`<strong>${installation.nom_ets || "Installation sans nom"}</strong><br>${installation.lib_naf || "Secteur non renseigné"}`)
+          .addTo(installationLayer);
+      });
+
+      const layerControl = L.control.layers(
+        { "Fond OpenStreetMap": baseLayer },
+        { "Zones thermiques": heatLayer, "Installations industrielles": installationLayer },
+        { collapsed: false },
+      );
+      layerControl.addTo(map);
+
+      requestAnimationFrame(() => map.invalidateSize());
+    });
+  };
+
+  document.addEventListener("DOMContentLoaded", initializeRiskMaps, { once: true });
+  document.addEventListener("astro:page-load", initializeRiskMaps);
+  if (document.readyState !== "loading") initializeRiskMaps();
+</script>

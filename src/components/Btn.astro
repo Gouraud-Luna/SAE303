@@ -1,0 +1,10 @@
+---
+const { href = "#", children = "En savoir plus" } = Astro.props;
+---
+
+<a
+  href={href}
+  class="inline-flex items-center border border-[#1e2b2a] px-4 py-2 text-sm font-medium text-[#1e2b2a] no-underline transition-colors hover:bg-[#1e2b2a] hover:text-white"
+>
+  {children}
+</a>

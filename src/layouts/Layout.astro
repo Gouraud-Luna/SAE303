@@ -16,12 +16,21 @@ const { title = "Accueil" } = Astro.props;
     <main
       class="mx-auto box-border min-h-screen w-full max-w-[1180px] px-6 py-6 sm:px-[6vw] sm:py-8"
     >
-      <nav aria-label="Navigation principale" class="border-b border-slate-300 pb-4">
+      <nav
+        aria-label="Navigation principale"
+        class="flex flex-wrap gap-x-6 gap-y-2 border-b border-slate-300 pb-4"
+      >
         <a
           href="/"
           class="text-sm font-medium text-slate-700 no-underline transition-colors hover:text-orange-700"
         >
           Accueil
+        </a>
+        <a
+          href="/exploration"
+          class="text-sm font-medium text-slate-700 no-underline transition-colors hover:text-orange-700"
+        >
+          Exploration
         </a>
       </nav>
       <slot />

@@ -1,0 +1,99 @@
+---
+import Layout from "../layouts/Layout.astro";
+import PlotFigure from "../components/PlotFigure.astro";
+import RiskMap from "../components/RiskMap.astro";
+import * as Plot from "@observablehq/plot";
+import chaleur from "../assets/chaleur.json";
+import installationsData from "../assets/installationindugironde.json";
+
+const bordeauxCode = 33063;
+const heatZones = chaleur
+  .filter((zone) => String(zone.insee) === String(bordeauxCode))
+  .map(({ geo_shape, delta }) => ({
+    ...geo_shape,
+    properties: { delta },
+  }));
+
+const installations = installationsData
+  .filter((installation) => String(installation.cd_insee) === String(bordeauxCode))
+  .map(({ x, y, nom_ets, lib_naf, lib_regime }) => ({
+    x,
+    y,
+    nom_ets,
+    lib_naf,
+    lib_regime,
+  }));
+
+const sectors = Object.entries(
+  installations.reduce((counts, installation) => {
+    const sector = installation.lib_naf || "Secteur non renseigné";
+    counts[sector] = (counts[sector] || 0) + 1;
+    return counts;
+  }, {}),
+)
+  .map(([sector, count]) => ({ sector, count }))
+  .sort((a, b) => b.count - a.count)
+  .slice(0, 10);
+---
+
+<Layout title="Exploration des risques">
+  <article class="pt-12 sm:pt-20">
+    <header class="max-w-3xl">
+      <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
+        02 · Exploration
+      </p>
+      <h1 class="text-4xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
+        Où les risques se concentrent-ils ?
+      </h1>
+      <p class="mt-6 text-lg leading-8 text-slate-600">
+        Cette carte croise les zones de chaleur relevées en 2022 et les installations
+        industrielles recensées à Bordeaux. Les deux calques peuvent être affichés
+        séparément pour lire chaque phénomène.
+      </p>
+    </header>
+
+    <figure class="mt-12">
+      <figcaption class="mb-4 max-w-3xl text-sm leading-6 text-slate-600">
+        Carte interactive de Bordeaux : les zones orange représentent les zones de chaleur ;
+        les points bleus représentent les installations industrielles. Utilisez le contrôle
+        en haut à droite pour activer ou désactiver les calques.
+      </figcaption>
+      <RiskMap heatZones={heatZones} installations={installations} />
+    </figure>
+
+    <section class="mt-20 grid gap-10 lg:grid-cols-[1fr_1.5fr]" aria-labelledby="sectors-title">
+      <div>
+        <p class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-orange-700">
+          Les activités recensées
+        </p>
+        <h2 id="sectors-title" class="text-3xl font-semibold tracking-tight text-slate-900">
+          Des installations aux secteurs variés
+        </h2>
+        <p class="mt-4 leading-7 text-slate-600">
+          Le graphique présente les dix secteurs d’activité les plus représentés
+          parmi les installations recensées à Bordeaux. Les valeurs sont des effectifs,
+          et non une mesure directe du niveau de danger.
+        </p>
+      </div>
+
+      <figure class="rounded border border-slate-200 bg-[#eef1ef] p-4">
+        <figcaption class="mb-4 text-sm text-slate-600">
+          Nombre d’installations par secteur d’activité
+        </figcaption>
+        <PlotFigure
+          options={{
+            height: 440,
+            marginLeft: 210,
+            x: { grid: true, label: "Installations" },
+            y: { domain: sectors.map(({ sector }) => sector), label: null },
+            marks: [
+              Plot.barX(sectors, { x: "count", y: "sector", fill: "#2563eb", sort: { y: "-x" } }),
+              Plot.text(sectors, { x: "count", y: "sector", text: "count", dx: 5, textAnchor: "start" }),
+              Plot.ruleX([0]),
+            ],
+          }}
+        />
+      </figure>
+    </section>
+  </article>
+</Layout>
